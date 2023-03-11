@@ -1,0 +1,155 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.STD_LOGIC_ARITH.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL;entity ceas is
+Port ( CLK100MHZ : in STD_LOGIC;
+btnL : in STD_LOGIC;
+btnR : in STD_LOGIC;
+btnU : in STD_LOGIC;
+btnD : in STD_LOGIC;
+btnC : in STD_LOGIC;
+seg : out STD_LOGIC_VECTOR (0 to 6);
+an : out STD_LOGIC_VECTOR (3 downto 0);
+dp : out STD_LOGIC);
+end ceas;architecture Behavioral of ceas iscomponent driver7seg is
+Port ( clk : in STD_LOGIC; --100MHz board clock input
+Din : in STD_LOGIC_VECTOR (15 downto 0); --16 bit binary data for 4 displays
+blink : in std_logic_vector (3 downto 0);
+an : out STD_LOGIC_VECTOR (3 downto 0); --anode outputs selecting individual displays 3 to 0
+seg : out STD_LOGIC_VECTOR (0 to 6); -- cathode outputs for selecting LED-s in each display
+dp_in : in STD_LOGIC_VECTOR (3 downto 0); --decimal point input values
+dp_out : out STD_LOGIC; --selected decimal point sent to cathodes
+rst : in STD_LOGIC); --global reset
+end component driver7seg;
+component DeBounce is
+port( Clock : in std_logic;
+Reset : in std_logic;
+button_in : in std_logic;
+pulse_out : out std_logic
+);
+end component;
+signal blink_digit1, blink_digit2 : std_logic;
+signal inc_digit1, inc_digit2 : std_logic;
+type states is (afis_scor, set_digit1, set_digit2, set_scor);
+signal current_state : states := afis_scor;
+signal CLK1HZ : std_logic;
+type digit2 is record
+dig1 : integer range 0 to 9;
+dig2 : integer range 0 to 9;
+end record;
+type digit1 is record
+dig1 : integer range 0 to 9;
+dig2 : integer range 0 to 9;
+end record;
+type timp is record
+digit2 : digit2;
+digit1 : digit1;
+end record;
+signal t : timp := ((0,0),(0,0)) ;
+signal digit1_digit2 : STD_LOGIC_VECTOR (15 downto 0);
+signal d : STD_LOGIC_VECTOR (15 downto 0);
+signal btnLd, btnCd, btnRd, btnUd, btnDd : std_logic;
+begindeb1 : debounce port map (clock => CLK100MHZ, Reset => '0', button_in => btnL, pulse_out => btnLd);
+deb2 : debounce port map (clock => CLK100MHZ, Reset => '0', button_in => btnC, pulse_out => btnCd);
+deb3 : debounce port map (clock => CLK100MHZ, Reset => '0', button_in => btnR, pulse_out => btnRd);
+deb4 : debounce port map (clock => CLK100MHZ, Reset => '0', button_in => btnU, pulse_out => btnUd);
+deb5 : debounce port map (clock => CLK100MHZ, Reset => '0', button_in => btnD, pulse_out => btnDd);process (CLK100MHZ)
+begin
+if rising_edge(CLK100MHZ) then
+case (current_state) is
+when afis_scor =>
+if btnLd = '1' then
+current_state <= set_digit1;
+end if;
+when set_digit1 =>
+if btnLd = '1' then
+current_state <= set_digit2;
+end if;
+when set_digit2 =>
+if btnLd = '1' then
+current_state <= set_scor;
+end if;
+when set_scor =>
+current_state <= afis_scor;
+end case;
+end if;
+end process;
+blink_digit1 <= '1' when current_state = set_digit1 else '0';
+blink_digit2 <= '1' when current_state = set_digit2 else '0';
+process (CLK100MHZ)
+begin
+if rising_edge(CLK100MHZ) then
+case (current_state) is
+when afis_scor =>
+if btnLd = '1' then
+current_state <= set_digit1;
+end if;
+when set_digit1 =>
+if btnLd = '1' then
+current_state <= set_digit2;
+end if;
+when set_digit2 =>
+if btnLd = '1' then
+current_state <= set_scor;
+end if;
+when set_scor =>
+current_state <= afis_scor;
+end case;
+end if;
+end process;
+inc_digit2 <= '1' when current_state = set_digit2 and btnRd = '1' else '0';
+inc_digit1 <= '1' when current_state = set_digit1 and btnRd = '1' else '0';process (CLK100MHZ)
+begin
+if rising_edge(CLK100MHZ) then
+if t.digit2.dig1 = 9 then
+t.digit2.dig1 <= 0;
+if t.digit2.dig2 = 9 then
+t.digit2.dig2 <= 0;
+if t.digit1.dig1 = 9 and t.digit1.dig2 = 9 then
+t.digit1.dig1 <= 0;
+t.digit1.dig2 <= 0;
+elsif t.digit1.dig1 = 9 then
+t.digit1.dig1 <= 0;
+t.digit1.dig2 <= t.digit1.dig2 + 1;
+else
+t.digit1.dig1 <= t.digit1.dig1 + 1;
+end if;
+else
+t.digit2.dig2 <= t.digit2.dig2 + 1;
+end if;
+else
+t.digit2.dig1 <= t.digit2.dig1 + 1;
+end if; elsif inc_digit2 = '1' then
+if t.digit2.dig1 = 9 then
+t.digit2.dig1 <= 0;
+if t.digit2.dig2 = 9 then
+t.digit2.dig2 <= 0;
+else
+t.digit2.dig2 <= t.digit2.dig2 + 1;
+end if;
+else
+t.digit2.dig1 <= t.digit2.dig1 + 1;
+end if;
+elsif inc_digit1 = '1' then
+if t.digit1.dig1 = 9 and t.digit1.dig2 = 9 then
+t.digit1.dig1 <= 0;
+t.digit1.dig2 <= 0;
+elsif t.digit1.dig1 = 9 then
+t.digit1.dig1 <= 0;
+t.digit1.dig2 <= t.digit1.dig2 + 1;
+else
+t.digit1.dig1 <= t.digit1.dig1 + 1;
+end if;
+end if;
+end process;digit1_digit2 <= conv_std_logic_vector(t.digit1.dig2,4) & conv_std_logic_vector(t.digit1.dig1,4) & conv_std_logic_vector(t.digit2.dig2,4) & conv_std_logic_vector(t.digit2.dig1,4);--d <= digit1_digit2 when btnC = '0' else sec_sec;display : driver7seg port map (
+clk => CLK100MHZ,
+Din => d,
+blink(0) => blink_digit2,
+blink(1) => blink_digit2,
+blink(2) => blink_digit1,
+blink(3) => blink_digit1,
+an => an,
+seg => seg,
+dp_in => (others => '0'),
+dp_out => dp,
+rst => '0');end Behavioral;
